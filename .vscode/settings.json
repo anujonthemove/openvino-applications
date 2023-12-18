@@ -1,0 +1,20 @@
+{
+    "python.analysis.indexing": true,
+    "python.analysis.autoImportCompletions": true,
+    "python.languageServer": "Pylance",
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+    },
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
+    "python.linting.enabled": true,
+    "python.linting.flake8Enabled": true,
+    "notebook.formatOnSave.enabled": true
+}
