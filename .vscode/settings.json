@@ -14,7 +14,5 @@
         "--profile",
         "black"
     ],
-    "python.linting.enabled": true,
-    "python.linting.flake8Enabled": true,
     "notebook.formatOnSave.enabled": true
 }
