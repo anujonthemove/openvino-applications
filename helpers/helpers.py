@@ -3,51 +3,51 @@ import time
 
 import cv2
 import numpy as np
+from shapely.geometry import Point, Polygon
 
 
-def add_frame_info(
-    frame, instructions, cv_font=cv2.FONT_HERSHEY_PLAIN, position="top-right"
+def put_text_with_background(
+    image, instructions, cv_font=cv2.FONT_HERSHEY_PLAIN, position="top-right"
 ):
-    font = cv_font
-    frame_with_instructions = frame.copy()
-    height, width, _ = frame_with_instructions.shape
+    if image is None:
+        raise ValueError("Input image is None.")
 
-    # Determine the dimensions of the red background based on the instructions
+    font = cv_font
+    image_with_instructions = image.copy()
+    height, width, _ = image_with_instructions.shape
+
     text_size = cv2.getTextSize(max(instructions, key=len), font, 1, 2)[0]
     padding = 10
     bg_height = len(instructions) * text_size[1] + padding * 2
     bg_width = text_size[0] + padding * 3
 
-    # Set the position based on the argument
-    if position == "top-left":
-        start_point = (0, 0)
-    elif position == "top-right":
-        start_point = (width - bg_width, 0)
-    elif position == "bottom-left":
-        start_point = (0, height - bg_height)
-    elif position == "bottom-right":
-        start_point = (width - bg_width, height - bg_height)
-    elif position == "center":
-        start_point = ((width - bg_width) // 2, (height - bg_height) // 2)
-    else:
+    position_mapping = {
+        "top-left": (0, 0),
+        "top-right": (width - bg_width, 0),
+        "bottom-left": (0, height - bg_height),
+        "bottom-right": (width - bg_width, height - bg_height),
+        "center": ((width - bg_width) // 2, (height - bg_height) // 2),
+    }
+
+    if position not in position_mapping:
         raise ValueError(
             "Invalid position. Supported positions: 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'"
         )
 
-    # Draw the red background behind the instructions
+    start_point = position_mapping[position]
+
     cv2.rectangle(
-        frame_with_instructions,
+        image_with_instructions,
         start_point,
         (start_point[0] + bg_width, start_point[1] + bg_height),
         (0, 0, 255),
         -1,
     )
 
-    # Display instructions on the red background
     for idx, instruction in enumerate(instructions):
         y = start_point[1] + (idx + 1) * text_size[1] + padding
         cv2.putText(
-            frame_with_instructions,
+            image_with_instructions,
             instruction,
             (start_point[0] + padding, y),
             font,
@@ -56,7 +56,7 @@ def add_frame_info(
             1,
         )
 
-    return frame_with_instructions
+    return image_with_instructions
 
 
 class VideoPlayer:
@@ -203,7 +203,9 @@ class PolygonDrawer:
             canvas = self.image.copy()
             # cv2.putText(canvas, "Press 'Esc' to finish adding points", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
             # cv2.putText(canvas, "Press any key to confirm", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2, cv2.LINE_AA)
-            canvas = add_frame_info(canvas, self.instructions, position="top-right")
+            canvas = put_text_with_background(
+                canvas, self.instructions, position="top-right"
+            )
             canvas = self.draw_polygon(canvas)
             cv2.imshow(self.window_name, canvas)
             if cv2.waitKey(50) == 27:  # ESC hit
@@ -240,7 +242,9 @@ def capture_frame_for_ROI(source):
             print("Frame not found")
             break
 
-        frame_copy = add_frame_info(frame_copy, instructions, position="center")
+        frame_copy = put_text_with_background(
+            frame_copy, instructions, position="center"
+        )
         cv2.namedWindow("frame", cv2.WINDOW_KEEPRATIO)
         cv2.imshow("frame", frame_copy)
         k = cv2.waitKey(0)
@@ -282,7 +286,7 @@ def compute_polygon_intersection(image, polygon1_points, polygon2_points):
             - polygons_intersect (bool): True if polygons intersect, False otherwise.
             - intersection_visualization (numpy.ndarray): Visualization of the intersection.
     """
-    # Create masks for each polygon
+    # Create a mask for both polygons
     mask1 = np.zeros_like(image, dtype=np.uint8)
     mask2 = np.zeros_like(image, dtype=np.uint8)
 
@@ -290,12 +294,48 @@ def compute_polygon_intersection(image, polygon1_points, polygon2_points):
     cv2.fillPoly(mask2, [np.array(polygon2_points, dtype=np.int32)], (255, 0, 255))
 
     # Compute the intersection of the two masks
-    intersection_mask = cv2.bitwise_and(mask1, mask2)
+    intersection_mask = cv2.bitwise_and(mask1, mask1)
 
     # Visualize the intersection by adding the original masks
     intersection_visualization = cv2.add(cv2.add(mask1, mask2), intersection_mask)
 
     # Check if the intersection mask has any non-zero pixels
-    intrusion_flag = np.any(intersection_mask)
+    polygons_intersect = np.any(intersection_mask)
 
-    return intrusion_flag, intersection_visualization
+    return polygons_intersect, intersection_visualization
+
+
+def is_point_inside_polygon(polygon, point) -> bool:
+    """
+    Check if a point is inside a polygon.
+
+    Args:
+        polygon (list[list[float]]): List of points for the polygon [[x1, y1], [x2, y2], ...].
+        point (list[float]): Point [x, y].
+
+    Returns:
+        bool: True if the point is inside the polygon, False otherwise.
+    """
+    polygon_shape = Polygon(polygon)
+    return polygon_shape.contains(Point(point))
+
+
+def are_polygons_intersecting(pt1, pt2, intersection_threshold=0.5) -> bool:
+    """
+    Check if two polygons are intersecting.
+
+    Args:
+        pt1 (list[list[float]]): List of points for polygon 1 [[x1, y1], [x2, y2], ...].
+        pt2 (list[list[float]]): List of points for polygon 2 [[x1, y1], [x2, y2], ...].
+        intersection_threshold (float, optional): Intersection threshold for polygon intersection with respect to pt2. Defaults to 0.5.
+
+    Returns:
+        bool: True if the polygons are intersecting with the specified threshold, False otherwise.
+    """
+    polygon1 = Polygon(pt1)
+    polygon2 = Polygon(pt2)
+
+    intersection_area = polygon1.intersection(polygon2).area
+    if intersection_area / polygon2.area > intersection_threshold:
+        return True
+    return False
